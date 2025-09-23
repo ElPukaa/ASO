@@ -19,6 +19,11 @@ void copia(char **buffers)
 {
     strcpy(buffers[0], "ASO");
 }
+void liberamem(char **buffers){
+    for(int i=0; i<2000; i++){
+        free(buffers[i]);
+    }
+}
 
 int main(void)
 {
@@ -27,6 +32,7 @@ int main(void)
     buffers = inicializa();
     copia(buffers);
     printf("%s\n", buffers[0]);
-
+    liberamem(buffers);
+    free(buffers);
     return EXIT_SUCCESS;
 }

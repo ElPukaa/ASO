@@ -8,7 +8,7 @@ int main(int argc, char **argv)
     int opt, flag = 0, n = 0;
     char *s = NULL;
 
-    optind = 1;
+    optind = 1;//argumento al q apunta getopt
     while ((opt = getopt(argc, argv, "fn:s:h")) != -1)
     {
         switch (opt)
