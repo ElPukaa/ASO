@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    char *l_buffer = malloc(MAX_LINE_SIZE * sizeof(char)); //buffer para ir almacenando la línea leída
+    char *l_buffer = malloc((MAX_LINE_SIZE + 1) * sizeof(char)); //buffer para ir almacenando la línea leída (el +1 es para el \0)
     if (!l_buffer) {
         perror("Error al asignar memoria para l_buffer");
         free(b_buffer);
@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
 
 
     
-
+    int lineno = 0;//para identificar la línea actual
     ssize_t bytes_leidos;
     ssize_t indice_bytes_lineas = 0; //índice para ir almacenando en l_buffer
 
@@ -122,27 +122,44 @@ int main(int argc, char *argv[]) {
         //procesar buffer
         for (int i=0; i < bytes_leidos; i++){//mientras el l_buffer no esté lleno
             //almacenar en l_buffer hasta encontrar \n
-            if(b_buffer[i] != '\n' && indice_bytes_lineas < MAX_LINE_SIZE - 1) {//si el caracter a copiar en el l_buffer no es \n y no se ha llenado l_buffer
-                l_buffer[indice_bytes_lineas] = b_buffer[i];//copiamos byte a byte del b_buffer al buffer de línea
+            if(b_buffer[i] == '\n') {//si el caracter a copiar en el l_buffer es \n
+                l_buffer[indice_bytes_lineas] = '\0'; // Terminar la cadena 
+                
+                if (indice_bytes_lineas > 0) { //si la línea no está vacía
+                    interpretar_comando(l_buffer, lineno); 
+                }
+                
+                //l_buffer preparado para la siguiente línea
+                indice_bytes_lineas = 0;
+                lineno++;
+
+            }else if (indice_bytes_lineas < MAX_LINE_SIZE) { //si no se ha llenado l_buffer
+                l_buffer[indice_bytes_lineas] = b_buffer[i]; //copiamos de b_buffer a l_buffer
                 indice_bytes_lineas++;
-            }//hemos leido la linea completa o se ha llenado l_buffer
-            
-            if (indice_bytes_lineas == MAX_LINE_SIZE - 1){//la linea no esta completa (es demasiado larga)
-            
-                perror("Error línea demasiado larga");
+                
+            } else {// si la línea es demasiado larga.
+                l_buffer[MAX_LINE_SIZE] = '\0'; // Asegurar fin de cadena para imprimir(necesario para el mensaje de error)
+                fprintf(stderr, "Error, línea %d demasiado larga: \"%s...\"\n", lineno, l_buffer);
+                
                 free(l_buffer);
+                free(b_buffer);
                 exit(EXIT_FAILURE);
-            }
-            
-            if(b_buffer[i] == '\n'){ 
-                l_buffer[indice_bytes_lineas] = '\0'; //final de línea
-                interpretar_comando(l_buffer); //llama a la funcion comando para ejecutar línea almacenada en l_buffer
-                indice_bytes_lineas = 0; //resetear índice para la siguiente línea   
             }
                
         }   
     }
 
+    if (bytes_leidos == -1) {       //si ha habido error en la lectura (read devuelve -1 en caso de error)
+        perror("Error al leer de stdin");
+        free(l_buffer);
+        free(b_buffer);
+        exit(EXIT_FAILURE);
+    }
+
+    if (indice_bytes_lineas > 0) {      //si read ha terminado pero hay datos en l_buffer (hay un EOF en vez de un \n)
+        l_buffer[indice_bytes_lineas] = '\0';
+        interpretar_comando(l_buffer, lineno);
+    }
 
 
     free(l_buffer);
