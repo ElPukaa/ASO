@@ -10,50 +10,50 @@
 
 typedef enum { RECARGA = 1, ESPERA = 0 } estado_t;
 
-static estado_t estado = RECARGA;
+static estado_t estado = RECARGA;   
 
-void bloquea_signal(int signal)
-{
-    sigset_t blocked_signals;
-    sigemptyset(&blocked_signals);
-    sigaddset(&blocked_signals, signal);
-    if (sigprocmask(SIG_BLOCK, &blocked_signals, NULL) == -1) {
+void bloquea_signal(int signal) //funcion para bloquear señales
+{   
+    sigset_t blocked_signals;       //conjunto de señales
+    sigemptyset(&blocked_signals);  //vacia el conjunto de señales
+    sigaddset(&blocked_signals, signal);    //añade la señal q queremos bloquear
+    if (sigprocmask(SIG_BLOCK, &blocked_signals, NULL) == -1) { //si falla el bloqueo de la señal
         perror("sigprocmask()");
-        exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE); //sale con error
     }
 }
 
-void instala_manejador_signal(int signal, void (*signal_handler)(int))
+void instala_manejador_signal(int signal, void (*signal_handler)(int))  //funcion para instalar manejadores de señales
 {
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(struct sigaction));
-    sa.sa_handler = signal_handler;
-    sa.sa_flags = SA_NOCLDSTOP;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(signal, &sa, NULL) == -1) {
+    struct sigaction sa;        //estructura para definir el manejador de señales
+    memset(&sa, 0, sizeof(struct sigaction));   //pone la estructura a 0
+    sa.sa_handler = signal_handler; //asigna el manejador de señales pasado por parametro
+    sa.sa_flags = SA_NOCLDSTOP;     //ignora señales SIGCHLD de procesos hijos que se detienen solo se recibe cuando ha terminado
+    sigemptyset(&sa.sa_mask);       //vacia el conjunto de señales a bloquear durante la ejecucion del manejador
+    if (sigaction(signal, &sa, NULL) == -1) {   //si falla la instalacion del manejador(para la senal pasada por parametro hace lo definido en sa que es no recibir SIGCHLD de procesos hijos que se detienen)
         perror("sigaction()");
         exit(EXIT_FAILURE);
     }
 }
 
-void write_handler(char *msg)
+void write_handler(char *msg)   //funcion para escribir de manera segura
 {
     /* Escribe en la salida estándar de manera segura */
-    if (write(STDOUT_FILENO, msg, strlen(msg)) == -1)
+    if (write(STDOUT_FILENO, msg, strlen(msg)) == -1)//si falla el write
     {
         perror("write() en handler");
         exit(EXIT_FAILURE);
     }
 }
 
-void manejador_sigchld(int signal)
+void manejador_sigchld(int signal)//funcion manejadora de la señal SIGCHLD
 {
     int saved_errno = errno;
 
-    if (signal == SIGCHLD)
+    if (signal == SIGCHLD) 
     {
         /* Impide que el proceso hijo se convierta en 'zombie' */
-        if (wait(NULL) == -1)
+        if (wait(NULL) == -1)   //si falla el wait
         {
             perror("wait() en handler");
             exit(EXIT_FAILURE);
@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
 
     inicializa();
 
-    if (argc < 2)
+    if (argc < 2)//si hay menos argumentos de los que se necesitan
     {
         printf("Uso: %s FILE.pdf\n", argv[0]);
         exit(EXIT_FAILURE);
@@ -95,9 +95,9 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    while(1)
+    while(1)    //MONTOYADA DECIMONONICA
     {
-        if (estado == RECARGA)
+        if (estado == RECARGA)//si no esta lanzado el visor de pdfs
         {
             printf("main(): Creando lector de PDF...\n");
 
@@ -109,9 +109,9 @@ int main(int argc, char *argv[])
                 exit(EXIT_FAILURE);
                 break;
             case 0: /* Ejecución del proceso proceso hijo tras fork() con éxito */
-                execlp("evince", "evince", argv[1], NULL);
-                fprintf(stderr, "execlp() failed\n");
-                exit(EXIT_FAILURE);
+                execlp("evince", "evince", argv[1], NULL); //ejecuta el visor de pdfs
+                fprintf(stderr, "execlp() failed\n"); // esta linea se ejecuta solo si ha fallado la de antes
+                exit(EXIT_FAILURE); //y como ha fallado sale
                 break;
             default: /* Ejecución del proceso padre tras fork() con éxito */
                 printf("main(): Lector de PDF creado...\n");
