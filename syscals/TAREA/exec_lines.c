@@ -8,18 +8,18 @@
 #include <errno.h>
 #include <fcntl.h>  
 
-int PROCS_ACTIVOS = 0; //contador de procesos activos
+volatile sig_atomic_t PROCS_ACTIVOS = 0; //contador de procesos activos
 int NUM_PROCS = 1;     //número máximo de procesos simultáneos(POR DEFECTO 1)
-int LINENO = 0;        //número de línea actual
+volatile sig_atomic_t LINENO = 0;        //número de línea actual
 
 const char *mensaje_help = 
-   "Uso: ./exec_lines [-b BUF_SIZE] [-l MAX_LINE_SIZE] [-p NUM_PROCS]\n
-    Lee de la entrada estándar una secuencia de líneas conteniendo órdenes\n
-    para ser ejecutadas y lanza los procesos necesarios para ejecutar cada\n
-    línea, esperando a su terminación para ejecutar la siguiente.\n
-    -b BUF_SIZE \t Tamaño del buffer de entrada 1<=BUF_SIZE<=8192\n 
-    -l MAX_LINE_SIZE \t Tamaño máximo de línea 16<=MAX_LINE_SIZE<=1024\n
-    -p NUM_PROCS \t Número de procesos en ejecución de forma simultánea (1 <= NUM_PROCS <= 8)\n"
+   "Uso: ./exec_lines [-b BUF_SIZE] [-l MAX_LINE_SIZE] [-p NUM_PROCS]\n"
+    "Lee de la entrada estándar una secuencia de líneas conteniendo órdenes\n"
+    "para ser ejecutadas y lanza los procesos necesarios para ejecutar cada\n"
+    "línea, esperando a su terminación para ejecutar la siguiente.\n"
+    "-b BUF_SIZE \t Tamaño del buffer de entrada 1<=BUF_SIZE<=8192\n"
+    "-l MAX_LINE_SIZE \t Tamaño máximo de línea 16<=MAX_LINE_SIZE<=1024\n"
+    "-p NUM_PROCS \t Número de procesos en ejecución de forma simultánea (1 <= NUM_PROCS <= 8)\n";
 
 
 char* limpiar_linea(char* linea) {
@@ -67,7 +67,8 @@ void ejecutar_comando(char *comando) {
 }
 
 void esperar_hueco(){
-    while (PROCS_ACTIVOS >= NUM_PROCS) { //mientras NO haya hueco para ejecutar otro proceso
+
+    if(PROCS_ACTIVOS >= NUM_PROCS) { //mientras NO haya hueco para ejecutar otro proceso
         int status;                             //para almacenar el estado de terminación
         pid_t terminado = wait(&status);        //espera a que termine un proceso hijo
         PROCS_ACTIVOS--;                        //decrementa el contador de procesos activos (porque despues del wait ha terminado uno)
@@ -93,7 +94,7 @@ void interpretar_comando(char *comando, int LINENO) {
 
     //CUIDAO que pasa si no se lanzan tantos procesos como NUM_PROCS_GLOBAL? no entraria nunca aqui
 
-    esperar_hueco(PROCS_ACTIVOS); //espera hasta que haya hueco para lanzar otro proceso(en caso de que se haya llegado al maximo sino salta directamente)
+    esperar_hueco(); //espera hasta que haya hueco para lanzar otro proceso(en caso de que se haya llegado al maximo sino salta directamente)
     
     if ((comando2 = strstr(comando, "|")) != NULL) {//si hay una tuberia
         *comando2 = '\0';   //cambia el carácter | por \0 para indicar el final del primer comando
@@ -125,7 +126,7 @@ void interpretar_comando(char *comando, int LINENO) {
                         ejecutar_comando(comando);
                           
                     }
-                        esperar_hueco(PROCS_ACTIVOS); //espera hasta que haya hueco para lanzar otro proceso(en caso de que se haya llegado al maximo sino salta directamente)
+                        esperar_hueco(); //espera hasta que haya hueco para lanzar otro proceso(en caso de que se haya llegado al maximo sino salta directamente)
                     
                     pid_t right = fork();   //parte derecha de la tuberia
                     if (right == 0) {
@@ -138,6 +139,7 @@ void interpretar_comando(char *comando, int LINENO) {
                     //una vez lanzados los procesos, cierra las tuberias el padre y espera a que los hisjos terminen
                     close(pipefd[0]);
                     close(pipefd[1]);
+                    
                     waitpid(left, NULL, 0);
                     waitpid(right, NULL, 0);
 
@@ -269,7 +271,7 @@ void interpretar_comando(char *comando, int LINENO) {
 
 int main(int argc, char *argv[]) {
     int opt, BUF_SIZE = 16, MAX_LINE_SIZE = 32; //valores por defecto 
-    char *buffer; // buffer de lectura
+    char *b_buffer; // buffer de lectura
     
 
     optind = 1;
