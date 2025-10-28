@@ -8,9 +8,9 @@
 #include <errno.h>
 #include <fcntl.h>  
 
-volatile sig_atomic_t PROCS_ACTIVOS = 0; //contador de procesos activos
+int PROCS_ACTIVOS = 0; //contador de procesos activos
 int NUM_PROCS = 1;     //número máximo de procesos simultáneos(POR DEFECTO 1)
-volatile sig_atomic_t LINENO = 0;        //número de línea actual
+int LINENO = 0;        //número de línea actual
 
 const char *mensaje_help = 
    "Uso: ./exec_lines [-b BUF_SIZE] [-l MAX_LINE_SIZE] [-p NUM_PROCS]\n"
@@ -66,9 +66,9 @@ void ejecutar_comando(char *comando) {
     exit(EXIT_FAILURE);
 }
 
-void esperar_hueco(){
+void esperar_hueco(int procesos_necesarios){
 
-    if(PROCS_ACTIVOS >= NUM_PROCS) { //mientras NO haya hueco para ejecutar otro proceso
+    if(PROCS_ACTIVOS + procesos_necesarios >= NUM_PROCS) { //mientras NO haya hueco para ejecutar otro proceso
         int status;                             //para almacenar el estado de terminación
         pid_t terminado = wait(&status);        //espera a que termine un proceso hijo
         PROCS_ACTIVOS--;                        //decrementa el contador de procesos activos (porque despues del wait ha terminado uno)
@@ -86,23 +86,25 @@ void esperar_hueco(){
 }
 
 
-
 void interpretar_comando(char *comando, int LINENO) {
     pid_t pid;              //para el fork
     char *comando2 = NULL;
     int pipefd[2];          //para las tuberias
+    int num_procs_necesarios = 1;
 
     //CUIDAO que pasa si no se lanzan tantos procesos como NUM_PROCS_GLOBAL? no entraria nunca aqui
-
-    esperar_hueco(); //espera hasta que haya hueco para lanzar otro proceso(en caso de que se haya llegado al maximo sino salta directamente)
     
+    esperar_hueco(num_procs_necesarios); //espera hasta que haya 2 huecos para lanzar otro proceso(en caso de que se haya llegado al maximo sino salta directamente)
+
     if ((comando2 = strstr(comando, "|")) != NULL) {//si hay una tuberia
         *comando2 = '\0';   //cambia el carácter | por \0 para indicar el final del primer comando
         comando2++;         //avanzar uno para que apunte al inicio del segundo comando
         comando = limpiar_linea(comando);
         comando2 = limpiar_linea(comando2);
 
-        //if(PROCS_ACTIVOS + 2 = NUM_PROCS_GLOBAL){
+        //if(PROCS_ACTIVOS + 2 = NUM_PROCS_GLOBAL)
+            //como ya hay un hueco reservado al menos, hacemos una segunda comprobación para tener seguro que hay al menos 2 huecos si hay pipeline 
+    
             pid = fork();
             switch (pid) {
                 case -1:   //fallo del fork
@@ -126,7 +128,6 @@ void interpretar_comando(char *comando, int LINENO) {
                         ejecutar_comando(comando);
                           
                     }
-                        esperar_hueco(); //espera hasta que haya hueco para lanzar otro proceso(en caso de que se haya llegado al maximo sino salta directamente)
                     
                     pid_t right = fork();   //parte derecha de la tuberia
                     if (right == 0) {
@@ -158,6 +159,7 @@ void interpretar_comando(char *comando, int LINENO) {
         comando = limpiar_linea(comando);
         comando2 = limpiar_linea(comando2);
 
+        
         pid = fork();
         switch (pid) {//comprueba el fork
             case -1:    //si falla
@@ -188,7 +190,7 @@ void interpretar_comando(char *comando, int LINENO) {
         comando2 += 2;  //avanza dos posiciones para que apunte al inicio del segundo comando(por el >>)
         comando = limpiar_linea(comando);
         comando2 = limpiar_linea(comando2);
-
+        
         pid = fork();
         switch (pid) {
             case -1:
@@ -221,6 +223,7 @@ void interpretar_comando(char *comando, int LINENO) {
         comando = limpiar_linea(comando);
         comando2 = limpiar_linea(comando2);
 
+        
         pid = fork();
         switch (pid) {
             case -1:
@@ -373,7 +376,6 @@ int main(int argc, char *argv[]) {
     }
 
     //PARTE QUE COMPRUEBA LA ULTIMA LINEA DEL FICHERO (si no acaba en \n)
-
 
     if (indice_bytes_lineas > 0) {      //si read ha terminado pero hay datos en l_buffer (hay un EOF en vez de un \n)
         l_buffer[indice_bytes_lineas] = '\0';
