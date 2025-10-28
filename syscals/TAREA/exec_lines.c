@@ -95,6 +95,15 @@ void ejecutar_comando(char *comando) {
         exit(EXIT_SUCCESS); 
     }
 
+    // Redirigir stderr a /dev/null para los comandos ejecutados
+    int null_fd = open("/dev/null", O_WRONLY);
+    if (null_fd == -1) {
+        perror("open(/dev/null)");
+        exit(EXIT_FAILURE);
+    }
+    dup2(null_fd, STDERR_FILENO);
+    close(null_fd);
+
     // Ejecutar comando con execvp
     execvp(argv[0], argv);//a partir de esta linea no se debería ejecutar nada más, si lo hace es que ha habido un error
 
