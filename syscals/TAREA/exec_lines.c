@@ -109,31 +109,39 @@ void interpretar_comando(char *comando, int LINENO) {
     char *izquierda = NULL; 
 
         // Usamos un bloque para que 'copia' y 'p' sean locales
-        int count = 0;
+        int contador_redirecciones = 0;
         char *copia = strdup(comando); // strdup necesita #include <string.h>
         if (!copia) {
             perror("strdup");
             exit(EXIT_FAILURE);
         }
 
-        if (strstr(copia, "|")) count++;
-        if (strstr(copia, "<")) count++;
+        if (strstr(copia, "|")){
+            contador_redirecciones++;
+        } 
+
+        if (strstr(copia, "<")){
+            contador_redirecciones++;
+        } 
 
         // Contamos y neutralizamos ">>"
         char *p = copia;
         while ((p = strstr(p, ">>")) != NULL) {
-            count++;
+            contador_redirecciones++;
             *p = ' '; // Reemplaza el primer '>'
             *(p+1) = ' '; // Reemplaza el segundo '>'
             p += 2;
         }
 
         // Ahora contamos los ">" simples que queden
-        if (strstr(copia, ">")) count++;
+        if (strstr(copia, ">")) {
+            contador_redirecciones++;
+        }
+        
         
         free(copia); // Liberamos la copia
 
-        if (count > 1) {
+        if (contador_redirecciones > 1) {
             fprintf(stderr, "Error: línea %d contiene múltiples operadores: %s\n", LINENO, comando);
             // No creamos proceso, simplemente volvemos al main
             return; 
@@ -150,10 +158,9 @@ void interpretar_comando(char *comando, int LINENO) {
         exit(EXIT_FAILURE);
     }
 
-    // 2. Bucle de espera (¡ESTO FALTABA!)
-    // Mientras el "parking" esté lleno...
+    // 2. Bucle de espera 
     while (PROCS_ACTIVOS >= NUM_PROCS) {
-        // ...nos dormimos, permitiendo que SIGCHLD nos despierte.
+        // si no hay hueco nos dormimos, permitiendo que SIGCHLD nos despierte.
         sigsuspend(&old_signals);
     }
     
@@ -161,8 +168,8 @@ void interpretar_comando(char *comando, int LINENO) {
     //    Mantenemos SIGCHLD bloqueado durante el fork.
     
     if ((derecha = strstr(comando, "|")) != NULL) {
-        // --- LÓGICA DE TUBERÍA ---
-        // La lógica de tubería es una "tarea" que se ejecuta en UN hijo.
+        //  TUBERÍA 
+        // La lógica de tubería es una "tarea" que se ejecuta en UN solo hijo.
         
         *derecha = '\0';
         derecha++;
@@ -176,7 +183,7 @@ void interpretar_comando(char *comando, int LINENO) {
                 exit(EXIT_FAILURE);
                 break;
 
-            case 0: { // --- COMIENZO DEL HIJO "TAREA" ---
+            case 0: { // COMIENZO DEL HIJO "TAREA" 
                 // El hijo "tarea" DEBE desbloquear las señales
                 if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) {
                     perror("sigprocmask(SETMASK) en hijo");
@@ -227,7 +234,7 @@ void interpretar_comando(char *comando, int LINENO) {
         }
 
     } else if ((derecha = strstr(comando, "<")) != NULL) {
-        // --- LÓGICA DE REDIRECCIÓN < --- (Esta ya la tenías bien)
+        // REDIRECCIÓN <
         *derecha = '\0';
         derecha++;
         izquierda = limpiar_linea(comando);
@@ -261,7 +268,7 @@ void interpretar_comando(char *comando, int LINENO) {
         }
 
     } else if ((derecha = strstr(comando, ">>")) != NULL) {
-        // --- LÓGICA DE REDIRECCIÓN >> --- (Esta ya la tenías bien)
+        // REDIRECCIÓN >> 
         *derecha = '\0';
         derecha += 2;
         izquierda = limpiar_linea(comando);
@@ -295,7 +302,7 @@ void interpretar_comando(char *comando, int LINENO) {
         }
         
     } else if ((derecha = strstr(comando, ">")) != NULL) {
-        // --- LÓGICA DE REDIRECCIÓN > --- (Esta ya la tenías bien)
+        // REDIRECCIÓN >
         *derecha = '\0';
         derecha++;
         izquierda = limpiar_linea(comando);
@@ -328,7 +335,7 @@ void interpretar_comando(char *comando, int LINENO) {
                 break;
         }
     } else {
-        // --- LÓGICA DE COMANDO SIMPLE --- (Esta ya la tenías bien)
+        //COMANDO SIMPLE
         pid = fork();
         switch(pid) {
             case -1:
