@@ -45,18 +45,16 @@ void manejador_sigchld(int signal) {
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {     // Mientras haya hijos que hayan terminado
         PROCS_ACTIVOS--; // Decrementa el contador por cada hijo terminado
 
-        int status;                             //para almacenar el estado de terminación
-
-        if (pid > 0) {//si waitpid ha ido bien (devuelve -1 en caso de error sino el pid del proceso que ha terminado)   
-            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {//si el proceso ha terminado con exit pero con código de error distinto de 0
+        if (pid > 0) { 
+            // Ahora 'status' es la variable correcta llenada por waitpid()
+            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
                 fprintf(stderr, "Error al ejecutar la línea %d. Terminación normal con código %d.\n", LINENO, WEXITSTATUS(status));
-                
-            } else if (WIFSIGNALED(status)) {//si el proceso ha terminado por señal de sistema(forzado)
+            } else if (WIFSIGNALED(status)) {
                 fprintf(stderr, "Error al ejecutar la línea %d. Terminación anormal por señal %d.\n", LINENO, WTERMSIG(status));
-                
             }
         }
     }
+    
     errno = saved_errno;
 }
 
@@ -105,261 +103,258 @@ void ejecutar_comando(char *comando) {
     exit(EXIT_FAILURE);
 }
 
-/*void esperar_hueco(int procesos_necesarios){
-
-    if(PROCS_ACTIVOS >= NUM_PROCS) { //mientras NO haya hueco para ejecutar otro proceso
-        int status;                             //para almacenar el estado de terminación
-        pid_t terminado = wait(&status);        //espera a que termine un proceso hijo
-        PROCS_ACTIVOS--;                        //decrementa el contador de procesos activos (porque despues del wait ha terminado uno)
-
-        if (terminado > 0) {//si wait ha ido bien (devuelve -1 en caso de error sino el pid del proceso que ha terminado)   
-            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {//si el proceso ha terminado con exit pero con código de error distinto de 0
-                fprintf(stderr, "Error al ejecutar la línea %d. Terminación normal con código %d.\n", LINENO, WEXITSTATUS(status));
-                
-            } else if (WIFSIGNALED(status)) {//si el proceso ha terminado por señal de sistema(forzado)
-                fprintf(stderr, "Error al ejecutar la línea %d. Terminación anormal por señal %d.\n", LINENO, WTERMSIG(status));
-                
-            }
-        }
-    }
-}*/
-
-
 void interpretar_comando(char *comando, int LINENO) {
-    pid_t pid;              //para el fork
+    pid_t pid;
     char *derecha = NULL;
     char *izquierda = NULL; 
+
+        // Usamos un bloque para que 'copia' y 'p' sean locales
+        int count = 0;
+        char *copia = strdup(comando); // strdup necesita #include <string.h>
+        if (!copia) {
+            perror("strdup");
+            exit(EXIT_FAILURE);
+        }
+
+        if (strstr(copia, "|")) count++;
+        if (strstr(copia, "<")) count++;
+
+        // Contamos y neutralizamos ">>"
+        char *p = copia;
+        while ((p = strstr(p, ">>")) != NULL) {
+            count++;
+            *p = ' '; // Reemplaza el primer '>'
+            *(p+1) = ' '; // Reemplaza el segundo '>'
+            p += 2;
+        }
+
+        // Ahora contamos los ">" simples que queden
+        if (strstr(copia, ">")) count++;
+        
+        free(copia); // Liberamos la copia
+
+        if (count > 1) {
+            fprintf(stderr, "Error: línea %d contiene múltiples operadores: %s\n", LINENO, comando);
+            // No creamos proceso, simplemente volvemos al main
+            return; 
+        }
+    
 
     sigset_t blocked_signals, old_signals;
     sigemptyset(&blocked_signals);
     sigaddset(&blocked_signals, SIGCHLD);
 
-    // Bloquea SIGCHLD para comprobar PROCS_ACTIVOS de forma segura
+    // 1. Bloquea SIGCHLD para comprobar PROCS_ACTIVOS de forma segura
     if (sigprocmask(SIG_BLOCK, &blocked_signals, &old_signals) == -1) {
         perror("sigprocmask(BLOCK)");
         exit(EXIT_FAILURE);
     }
+
+    // 2. Bucle de espera (¡ESTO FALTABA!)
+    // Mientras el "parking" esté lleno...
+    while (PROCS_ACTIVOS >= NUM_PROCS) {
+        // ...nos dormimos, permitiendo que SIGCHLD nos despierte.
+        sigsuspend(&old_signals);
+    }
     
-    //CUIDAO que pasa si no se lanzan tantos procesos como NUM_PROCS_GLOBAL? no entraria nunca aqui
+    // 3. Hay hueco. Lanzamos la "tarea" (1 línea = 1 hijo)
+    //    Mantenemos SIGCHLD bloqueado durante el fork.
     
-    
-    if ((derecha = strstr(comando, "|")) != NULL) {//si hay una tuberia
+    if ((derecha = strstr(comando, "|")) != NULL) {
+        // --- LÓGICA DE TUBERÍA ---
+        // La lógica de tubería es una "tarea" que se ejecuta en UN hijo.
         
-        int pipefd[2];          //para las tuberias
-
-        *derecha = '\0';   //cambia el carácter | por \0 para indicar el final del primer comando
-        derecha++;         //avanzar uno para que apunte al inicio del segundo comando
-        izquierda = limpiar_linea(comando);
-        derecha = limpiar_linea(derecha);
-        
-        //if(PROCS_ACTIVOS + 2 = NUM_PROCS_GLOBAL)
-            //como ya hay un hueco reservado al menos, hacemos una segunda comprobación para tener seguro que hay al menos 2 huecos si hay pipeline 
-    
-            if (pipe(pipefds) == -1){ /* Paso 0: Creación de la tubería */
-            
-                perror("pipe()");
-                exit(EXIT_FAILURE);
-            }
-            
-            /* Paso 1: Creación del hijo izquierdo de la tubería */
-            pid = fork();
-            switch (pid){
-                case -1:
-                    perror("fork(1)");
-                    exit(EXIT_FAILURE);
-                    break;
-                    
-                case 0: /* Hijo izquierdo de la tubería */
-                    /* Paso 2: El extremo de lectura no se usa */
-                    if (close(pipefds[0]) == -1){
-                        perror("close(1)");
-                        exit(EXIT_FAILURE);
-                    }
-                    /* Paso 3: Redirige la salida estándar al extremo de escritura de la tubería */
-                    if (dup2(pipefds[1], STDOUT_FILENO) == -1){
-                        perror("dup2(1)");
-                        exit(EXIT_FAILURE);
-                    }
-                    /* Paso 4: Cierra el descriptor duplicado */
-                    if (close(pipefds[1]) == -1){
-                        perror("close(2)");
-                        exit(EXIT_FAILURE);
-                    }
-                    /* Paso 5: Reemplaza el binario actual por el de `youtube-dl` */
-                    ejecutar_comando(izquierda);
-                    perror("execlp(izquierdo)");
-                    exit(EXIT_FAILURE);
-                    break;
-                default: /* El proceso padre continúa... */
-                    break;
-            }
-
-            /* Paso 6: Creación del hijo derecho de la tubería */
-            switch (fork()){
-
-                case -1:
-                    perror("fork(2)");
-                    exit(EXIT_FAILURE);
-                    break;
-                case 0: /* Hijo derecho de la tubería  */
-                    /* Paso 7: El extremo de escritura no se usa */
-                    if (close(pipefds[1]) == -1)
-                    {
-                        perror("close(3)");
-                        exit(EXIT_FAILURE);
-                    }
-                    /* Paso 8: Redirige la entrada estándar al extremo de lectura de la tubería */
-                    if (dup2(pipefds[0], STDIN_FILENO) == -1)
-                    {
-                        perror("dup2(2)");
-                        exit(EXIT_FAILURE);
-                    }
-                    /* Paso 9: Cierra el descriptor duplicado */
-                    if (close(pipefds[0]) == -1)
-                    {
-                        perror("close(4)");
-                        exit(EXIT_FAILURE);
-                    }
-                    /* Paso 10: Reemplaza el binario actual por el de `ffmpeg` */
-                    
-                    ejecutar_comando(derecha);
-                    perror("execlp(derecho)");
-                    exit(EXIT_FAILURE);
-                    break;
-                    
-                default: /* El proceso padre continúa... */
-                    break;
-            }
-            PROCS_ACTIVOS++; //NO SE SI METERLO AQUI O DONDE, PREGUNTAR A CHATI
-
-            /* El proceso padre cierra los descriptores de fichero no usados */
-            if (close(pipefds[0]) == -1){
-                perror("close(pipefds[0])");
-                exit(EXIT_FAILURE);
-            }
-            if (close(pipefds[1]) == -1){
-                perror("close(pipefds[1])");
-                exit(EXIT_FAILURE);
-            }
-            
-    }else if ((derecha = strstr(comando, "<")) != NULL) {
         *derecha = '\0';
         derecha++;
         izquierda = limpiar_linea(comando);
         derecha = limpiar_linea(derecha);
-
         
-        pid = fork();
-        switch (pid) {//comprueba el fork
-            case -1:    //si falla
-                perror("fork");
+        pid = fork(); // Creamos el hijo "tarea"
+        switch (pid) {
+            case -1:
+                perror("fork(tarea tuberia)");
                 exit(EXIT_FAILURE);
                 break;
 
-            case 0: {   //si va bien
+            case 0: { // --- COMIENZO DEL HIJO "TAREA" ---
+                // El hijo "tarea" DEBE desbloquear las señales
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) {
+                    perror("sigprocmask(SETMASK) en hijo");
+                    exit(EXIT_FAILURE);
+                }
+
+                // Ahora, este hijo gestiona la tubería (como en shell_ytdl_pipe_ffmpeg.c)
+                int pipefd[2];
+                if (pipe(pipefd) == -1) {
+                    perror("pipe()");
+                    exit(EXIT_FAILURE);
+                }
+
+                // Nieto 1 (Izquierdo)
+                pid_t left_pid = fork();
+                if (left_pid == 0) {
+                    close(pipefd[0]);
+                    dup2(pipefd[1], STDOUT_FILENO);
+                    close(pipefd[1]);
+                    ejecutar_comando(izquierda);
+                    perror("exec(izquierdo)");
+                    exit(EXIT_FAILURE);
+                }
+
+                // Nieto 2 (Derecho)
+                pid_t right_pid = fork();
+                if (right_pid == 0) {
+                    close(pipefd[1]);
+                    dup2(pipefd[0], STDIN_FILENO);
+                    close(pipefd[0]);
+                    ejecutar_comando(derecha);
+                    perror("exec(derecho)");
+                    exit(EXIT_FAILURE);
+                }
+
+                // El hijo "tarea" (padre de los nietos) cierra y espera
+                close(pipefd[0]);
+                close(pipefd[1]);
+                waitpid(left_pid, NULL, 0);
+                waitpid(right_pid, NULL, 0);
+                
+                exit(EXIT_SUCCESS); // El hijo "tarea" termina
+            } // --- FIN DEL HIJO "TAREA" ---
+
+            default: // Padre (main)
+                PROCS_ACTIVOS++; // Solo contamos 1 proceso-tarea
+                break;
+        }
+
+    } else if ((derecha = strstr(comando, "<")) != NULL) {
+        // --- LÓGICA DE REDIRECCIÓN < --- (Esta ya la tenías bien)
+        *derecha = '\0';
+        derecha++;
+        izquierda = limpiar_linea(comando);
+        derecha = limpiar_linea(derecha);
+        
+        pid = fork();
+        switch (pid) {
+            case -1:
+                perror("fork <");
+                exit(EXIT_FAILURE);
+                break;
+            case 0: { // Hijo
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+                    perror("sigprocmask(SETMASK) en hijo");
+                    exit(EXIT_FAILURE);
+                }
                 int fd = open(derecha, O_RDONLY);
                 if (fd < 0) {
                     perror("open <");
                     exit(EXIT_FAILURE);
                 }
-
-                dup2(fd, STDIN_FILENO); //redirige la entrada estandar al fichero
-                close(fd);      //cierra el descriptor original
+                dup2(fd, STDIN_FILENO);
+                close(fd);
                 ejecutar_comando(izquierda);
+                exit(EXIT_FAILURE);
             }
                 break;
-
-            default:
+            default: // Padre
                 PROCS_ACTIVOS++;
                 break;
         }
 
-    }else if ((derecha = strstr(comando, ">>")) != NULL) {
+    } else if ((derecha = strstr(comando, ">>")) != NULL) {
+        // --- LÓGICA DE REDIRECCIÓN >> --- (Esta ya la tenías bien)
         *derecha = '\0';
-        derecha += 2;  //avanza dos posiciones para que apunte al inicio del segundo comando(por el >>)
+        derecha += 2;
         izquierda = limpiar_linea(comando);
         derecha = limpiar_linea(derecha);
         
         pid = fork();
         switch (pid) {
             case -1:
-                perror("fork");
+                perror("fork >>");
                 exit(EXIT_FAILURE);
                 break;
-
-            case 0: {
-                int fd = open(derecha, O_WRONLY | O_CREAT | O_APPEND, S_IRWXU | S_IRWXG | S_IRWXO );//abre el fichero en modo escritura, si no existe lo crea y 
-                // añade al final(permisos de  r w x para User, Group y Others la ultima letra los identifica)
-                if (fd < 0) {   //si hay error al abrir el fichero
+            case 0: { // Hijo
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+                    perror("sigprocmask(SETMASK) en hijo");
+                    exit(EXIT_FAILURE);
+                }
+                int fd = open(derecha, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); // Permisos más simples
+                if (fd < 0) {
                     perror("open >>");
                     exit(EXIT_FAILURE);
                 }
-                dup2(fd, STDOUT_FILENO);//redirige la salida estandar al fichero
-                close(fd);//cierra el descriptor original
+                dup2(fd, STDOUT_FILENO);
+                close(fd);
                 ejecutar_comando(izquierda);
-                
-                }
+                exit(EXIT_FAILURE);
+            }
                 break;
-
-            default:
+            default: // Padre
                 PROCS_ACTIVOS++;
                 break;
         }
         
-    }else if ((derecha = strstr(comando, ">")) != NULL) {
+    } else if ((derecha = strstr(comando, ">")) != NULL) {
+        // --- LÓGICA DE REDIRECCIÓN > --- (Esta ya la tenías bien)
         *derecha = '\0';
         derecha++;
         izquierda = limpiar_linea(comando);
         derecha = limpiar_linea(derecha);
 
-        
         pid = fork();
         switch (pid) {
             case -1:
-                perror("fork");
+                perror("fork >");
                 exit(EXIT_FAILURE);
                 break;
-
-            case 0: {
-                int fd = open(derecha, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO );//abre el fichero en modo escritura, 
-                // si no existe lo crea y si existe lo trunca
-                if (fd < 0) {   //si hay error al abrir el fichero
+            case 0: { // Hijo
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+                    perror("sigprocmask(SETMASK) en hijo");
+                    exit(EXIT_FAILURE);
+                }
+                int fd = open(derecha, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+                if (fd < 0) {
                     perror("open >");
                     exit(EXIT_FAILURE);
                 }
-
-                dup2(fd, STDOUT_FILENO);    //redirige la salida estandar al fichero
+                dup2(fd, STDOUT_FILENO);
                 close(fd);
                 ejecutar_comando(izquierda);
-            
-                }
+                exit(EXIT_FAILURE);
+            }
                 break;
-
-            default:
+            default: // Padre
                 PROCS_ACTIVOS++;
                 break;
         }
-    }else {
-        // Comando simple
-        pid = fork();//crea un hijo
+    } else {
+        // --- LÓGICA DE COMANDO SIMPLE --- (Esta ya la tenías bien)
+        pid = fork();
         switch(pid) {
-            case -1:    //si falla
-                perror("fork");
+            case -1:
+                perror("fork simple");
                 exit(EXIT_FAILURE);
-            break;
-
-            case 0: //si va bien
+                break;
+            case 0: // Hijo
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+                    perror("sigprocmask(SETMASK) en hijo");
+                    exit(EXIT_FAILURE);
+                }
                 ejecutar_comando(comando);
-                
-            break;
-            
-            default:
+                exit(EXIT_FAILURE);
+                break;
+            default: // Padre
                 PROCS_ACTIVOS++;
                 break;
         }
     }
-}
 
+    // 4. Desbloquea SIGCHLD en el padre para recibir señales
+    if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) {
+        perror("sigprocmask(SETMASK) en padre");
+        exit(EXIT_FAILURE);
+    }
+}
 
 int main(int argc, char *argv[]) {
     instala_manejador_signal(SIGCHLD, manejador_sigchld);
