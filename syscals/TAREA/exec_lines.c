@@ -46,23 +46,8 @@ void manejador_sigchld(int signal) {
         PROCS_ACTIVOS--; // Decrementa el contador por cada hijo terminado
 
         if (pid > 0) { 
-            // Ahora 'status' es la variable correcta llenada por waitpid()
-            if (WIFEXITED(status)) {
-                if (WEXITSTATUS(status) != 0) {
-                    // Redireccionar stderr a /dev/null solo para el mensaje de error del comando
-                    int null_fd = open("/dev/null", O_WRONLY);
-                    if (null_fd != -1) {
-                        int saved_stderr = dup(STDERR_FILENO);
-                        dup2(null_fd, STDERR_FILENO);
-                        close(null_fd);
-                        // Restaurar stderr después de manejar el error
-                        if (saved_stderr != -1) {
-                            dup2(saved_stderr, STDERR_FILENO);
-                            close(saved_stderr);
-                        }
-                    }
-                    fprintf(stderr, "Error al ejecutar la línea %d. Terminación normal con código %d.\n", LINENO, WEXITSTATUS(status));
-                }
+            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+                fprintf(stderr, "Error al ejecutar la línea %d. Terminación normal con código 1.\n", LINENO);
             } else if (WIFSIGNALED(status)) {
                 fprintf(stderr, "Error al ejecutar la línea %d. Terminación anormal por señal %d.\n", LINENO, WTERMSIG(status));
             }
@@ -104,16 +89,29 @@ void ejecutar_comando(char *comando) {
     }
     argv[argc] = NULL; // finalizar la lista
 
-    
-    if (argc == 0){         // Si la línea está vacía, salir sin hacer nada
+    if (argc == 0) {         // Si la línea está vacía, salir sin hacer nada
         exit(EXIT_SUCCESS); 
     }
 
-    // Ejecutar comando con execvp
-    execvp(argv[0], argv);//a partir de esta linea no se debería ejecutar nada más, si lo hace es que ha habido un error
+    // Redirigir stderr a /dev/null
+    int null_fd = open("/dev/null", O_WRONLY);
+    if (null_fd == -1) {
+        perror("open(/dev/null)");
+        exit(EXIT_FAILURE);
+    }
+    int old_stderr = dup(STDERR_FILENO);
+    dup2(null_fd, STDERR_FILENO);
+    close(null_fd);
 
+    // Ejecutar comando con execvp
+    execvp(argv[0], argv);
+
+    // Si llegamos aquí, es que hubo un error en execvp
+    // Restauramos stderr para mostrar nuestro mensaje de error
+    dup2(old_stderr, STDERR_FILENO);
+    close(old_stderr);
+    
     fprintf(stderr, "Error: no se pudo ejecutar el comando '%s'\n", argv[0]);
-    perror("execvp");
     exit(EXIT_FAILURE);
 }
 
