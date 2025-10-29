@@ -402,6 +402,8 @@ int main(int argc, char *argv[]) {
                     NUM_PROCS = atoi(optarg);
                     if (NUM_PROCS < 1 || NUM_PROCS > 8){
                         fprintf(stderr, "Error: NUM_PROCS debe estar entre 1 y 8.\n");
+                        fprintf(stderr, mensaje_help, argv[0]);
+
                         exit(EXIT_FAILURE);
                     }
                     break;
