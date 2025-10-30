@@ -8,11 +8,11 @@
 #include <errno.h>
 #include <fcntl.h>  
 #include <signal.h>
-#include <string.h> // Para memset
+#include <string.h>
 
 int PROCS_ACTIVOS = 0; //contador de procesos activos
 int NUM_PROCS = 1;     //número máximo de procesos simultáneos(POR DEFECTO 1)
-int LINENO = 1;        //número de línea actual
+int LINENO = 0;        //número de línea actual
 
 const char *mensaje_help = 
    "Uso: ./exec_lines [-b BUF_SIZE] [-l MAX_LINE_SIZE] [-p NUM_PROCS]\n"
@@ -27,9 +27,9 @@ void instala_manejador_signal(int signal, void (*signal_handler)(int)) {
     struct sigaction sa;
     memset(&sa, 0, sizeof(struct sigaction));
     sa.sa_handler = signal_handler;
-    sa.sa_flags = SA_NOCLDSTOP; // Importante para SIGCHLD
+    sa.sa_flags = SA_NOCLDSTOP; 
     sigemptyset(&sa.sa_mask);
-    if (sigaction(signal, &sa, NULL) == -1) {
+    if (sigaction(signal, &sa, NULL) == -1) {   //si falla la instalacion
         perror("sigaction()");
         exit(EXIT_FAILURE);
     }
@@ -41,13 +41,12 @@ void manejador_sigchld(int signal) {
     pid_t pid;
     int status;
 
-    // Bucle para cosechar a TODOS los hijos que hayan terminado
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {     // Mientras haya hijos que hayan terminado
-        PROCS_ACTIVOS--; // Decrementa el contador por cada hijo terminado
+    // para cosechar hijo q hayan terminado
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {     //mientras haya hijos q hayan terminado
+        PROCS_ACTIVOS--; //quitamos un proceso activo
 
         if (pid > 0) { 
-            // Ahora 'status' es la variable correcta llenada por waitpid()
-            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+            if (WIFEXITED(status) && WEXITSTATUS(status) != 0) { 
                 fprintf(stderr, "Error al ejecutar la línea %d. Terminación normal con código %d.\n", LINENO, WEXITSTATUS(status));
             } else if (WIFSIGNALED(status)) {
                 fprintf(stderr, "Error al ejecutar la línea %d. Terminación anormal por señal %d.\n", LINENO, WTERMSIG(status));
@@ -60,14 +59,14 @@ void manejador_sigchld(int signal) {
 
 
 char* limpiar_linea(char* linea) {
-    // Elimina espacios en blanco al inicio
-    while (*linea == ' ') {
+    
+    while (*linea == ' ') { //para eliminar los espacios en blanco del principio
         linea++;
     }
 
-    // Elimina espacios en blanco al final
+    
     char *fin = linea + strlen(linea) - 1;
-    while (fin > linea && (*fin == ' ' || *fin == '\n')) {
+    while (fin > linea && (*fin == ' ' || *fin == '\n')) {  //elimina los espacios y saltos de linina al final
         *fin = '\0';
         fin--;
     }
@@ -76,84 +75,82 @@ char* limpiar_linea(char* linea) {
 }
 
 
-void ejecutar_comando(char *comando) {
-    // Separar la línea en tokens por espacios ()
-    int n = 10; // numero maximo de argumentos (palabras/tokens)
+void ejecutar_comando(char *comando) {  
+    
+    int n = 10; //numero maximo de argumentos (palabras/tokens)
     char *argv[n];
     int argc = 0;
 
-    // Tokenizar la línea
-    char *token = strtok(comando, " ");
+    char *token = strtok(comando, " "); //dividimos la linea en tokens separados por espacios
     while (token != NULL && argc < n - 1) {
         argv[argc++] = token;
         token = strtok(NULL, " ");
     }
-    argv[argc] = NULL; // finalizar la lista
+    argv[argc] = NULL;
 
     
-    if (argc == 0){         // Si la línea está vacía, salir sin hacer nada
+    if (argc == 0){         //si linea vacia salir 
         exit(EXIT_SUCCESS); 
     }
 
-    // Redirigir stderr a /dev/null para los comandos ejecutados
-    int null_fd = open("/dev/null", O_WRONLY);
+    
+    int null_fd = open("/dev/null", O_WRONLY); //redirige stderr a /dev/null para evitar que se mezclen mensajes de error
     if (null_fd == -1) {
         perror("open(/dev/null)");
         exit(EXIT_FAILURE);
     }
-    dup2(null_fd, STDERR_FILENO);
+    dup2(null_fd, STDERR_FILENO);   
     close(null_fd);
 
-    // Ejecutar comando con execvp
-    execvp(argv[0], argv);//a partir de esta linea no se debería ejecutar nada más, si lo hace es que ha habido un error
+    
+    execvp(argv[0], argv);//se ejecuta el comando
 
-    fprintf(stderr, "Error: no se pudo ejecutar el comando '%s'\n", argv[0]);
+    fprintf(stderr, "Error: no se pudo ejecutar el comando '%s'\n", argv[0]);   //hace esto solo si execvp falla
     perror("execvp");
     exit(EXIT_FAILURE);
 }
 
 void interpretar_comando(char *comando, int LINENO) {
-    LINENO++;
+    
     pid_t pid;
     char *derecha = NULL;
     char *izquierda = NULL; 
 
-        // Usamos un bloque para que 'copia' y 'p' sean locales
+        
         int contador_redirecciones = 0;
-        char *copia = strdup(comando); // strdup necesita #include <string.h>
+        char *copia = strdup(comando);  //hacemos una copia para no modificar el original (se encarga de reservar memoria)
         if (!copia) {
             perror("strdup");
             exit(EXIT_FAILURE);
         }
 
-        if (strstr(copia, "|")){
+        if (strstr(copia, "|")){    //si hay tubería
             contador_redirecciones++;
         } 
 
-        if (strstr(copia, "<")){
+        if (strstr(copia, "<")){    //si hay redirección de entrada
             contador_redirecciones++;
         } 
 
-        // Contamos y neutralizamos ">>"
         char *p = copia;
-        while ((p = strstr(p, ">>")) != NULL) {
+        while ((p = strstr(p, ">>")) != NULL) { //si hay redirección de salida(añadir al final)
             contador_redirecciones++;
-            *p = ' '; // Reemplaza el primer '>'
-            *(p+1) = ' '; // Reemplaza el segundo '>'
+            *p = ' '; // reemplaza el primer '>'
+            *(p+1) = ' '; // reemplaza el segundo '>'
             p += 2;
         }
 
-        // Ahora contamos los ">" simples que queden
-        if (strstr(copia, ">")) {
+        
+        if (strstr(copia, ">")) {   //si hay redirección de salida (sobreescribir)
             contador_redirecciones++;
         }
         
         
-        free(copia); // Liberamos la copia
+        free(copia); //liberamos la copia
 
-        if (contador_redirecciones > 1) {
+        if (contador_redirecciones > 1) {//si hay más de una redirección en la línea
             fprintf(stderr, "Error: línea %d contiene múltiples operadores: %s\n", LINENO, comando);
-            // No creamos proceso, simplemente volvemos al main
+            //no creamos proceso, simplemente volvemos al main
             return; 
         }
     
@@ -162,54 +159,46 @@ void interpretar_comando(char *comando, int LINENO) {
     sigemptyset(&blocked_signals);
     sigaddset(&blocked_signals, SIGCHLD);
 
-    // 1. Bloquea SIGCHLD para comprobar PROCS_ACTIVOS de forma segura
-    if (sigprocmask(SIG_BLOCK, &blocked_signals, &old_signals) == -1) {
+    if (sigprocmask(SIG_BLOCK, &blocked_signals, &old_signals) == -1) {     //si falla el bloqueo
         perror("sigprocmask(BLOCK)");
         exit(EXIT_FAILURE);
     }
 
-    // 2. Bucle de espera 
-    while (PROCS_ACTIVOS >= NUM_PROCS) {
-        // si no hay hueco nos dormimos, permitiendo que SIGCHLD nos despierte.
-        sigsuspend(&old_signals);
+
+    while (PROCS_ACTIVOS >= NUM_PROCS) {    //mientras no haya hueco
+        sigsuspend(&old_signals);   //esperamos a que un hijo termine
     }
     
-    // 3. Hay hueco. Lanzamos la "tarea" (1 línea = 1 hijo)
-    //    Mantenemos SIGCHLD bloqueado durante el fork.
-    
-    if ((derecha = strstr(comando, "|")) != NULL) {
-        //  TUBERÍA 
-        // La lógica de tubería es una "tarea" que se ejecuta en UN solo hijo.
+    if ((derecha = strstr(comando, "|")) != NULL) { 
         
         *derecha = '\0';
         derecha++;
         izquierda = limpiar_linea(comando);
         derecha = limpiar_linea(derecha);
         
-        pid = fork(); // Creamos el hijo "tarea"
-        switch (pid) {
-            case -1:
+        pid = fork(); // creamos el hijo "tarea"
+        switch (pid) {  //segun sea padre o hijo
+            case -1:    //si falla
                 perror("fork(tarea tuberia)");
                 exit(EXIT_FAILURE);
                 break;
 
-            case 0: { // COMIENZO DEL HIJO "TAREA" 
-                // El hijo "tarea" DEBE desbloquear las señales
-                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) {
+            case 0: { // hijo "gestor"
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) {   //si falla desbloqueo de señales
                     perror("sigprocmask(SETMASK) en hijo");
                     exit(EXIT_FAILURE);
                 }
 
-                // Ahora, este hijo gestiona la tubería (como en shell_ytdl_pipe_ffmpeg.c)
+                //este hijo gestiona la tubería
                 int pipefd[2];
-                if (pipe(pipefd) == -1) {
+                if (pipe(pipefd) == -1) {   //si falla la creación de la tubería
                     perror("pipe()");
                     exit(EXIT_FAILURE);
                 }
 
-                // Nieto 1 (Izquierdo)
+                //nieto 1 (Izquierdo)
                 pid_t left_pid = fork();
-                if (left_pid == 0) {
+                if (left_pid == 0) {    //si va bien ejecuta el comando izquierdo sino sale con error
                     close(pipefd[0]);
                     dup2(pipefd[1], STDOUT_FILENO);
                     close(pipefd[1]);
@@ -219,9 +208,9 @@ void interpretar_comando(char *comando, int LINENO) {
                 }
 
                 // Nieto 2 (Derecho)
-               // LINENO-=1;  //para dejar lineno correcto cuando hay una tuberia(que no se cuenten como dos lineas)
+
                 pid_t right_pid = fork();
-                if (right_pid == 0) {
+                if (right_pid == 0) {   //si va bien ejecuta el comando derecho sino sale con error
                     close(pipefd[1]);
                     dup2(pipefd[0], STDIN_FILENO);
                     close(pipefd[0]);
@@ -230,145 +219,145 @@ void interpretar_comando(char *comando, int LINENO) {
                     exit(EXIT_FAILURE);
                 }
 
-                // El hijo "tarea" (padre de los nietos) cierra y espera
+                //el hijo "gestor" (padre de los nietos) cierra y espera
                 close(pipefd[0]);
                 close(pipefd[1]);
                 waitpid(left_pid, NULL, 0);
                 waitpid(right_pid, NULL, 0);
                 
-                exit(EXIT_SUCCESS); // El hijo "tarea" termina
-            } // --- FIN DEL HIJO "TAREA" ---
+                exit(EXIT_SUCCESS);
+            }
 
-            default: // Padre (main)
-                PROCS_ACTIVOS++; // Solo contamos 1 proceso-tarea
+            default: //padre (main)
+                PROCS_ACTIVOS++; //solo contamos 1 proceso-tarea
                 break;
         }
 
     } else if ((derecha = strstr(comando, "<")) != NULL) {
-        // REDIRECCIÓN <
+        
         *derecha = '\0';
         derecha++;
         izquierda = limpiar_linea(comando);
         derecha = limpiar_linea(derecha);
         
         pid = fork();
-        switch (pid) {
-            case -1:
+        switch (pid) {  //segun sea padre o hijo
+            case -1:    //si falla
                 perror("fork <");
                 exit(EXIT_FAILURE);
                 break;
-            case 0: { // Hijo
-                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+            case 0: { // hijo
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { //si falla desbloqueo de señales
                     perror("sigprocmask(SETMASK) en hijo");
                     exit(EXIT_FAILURE);
                 }
-                int fd = open(derecha, O_RDONLY);
+                int fd = open(derecha, O_RDONLY);   //abrimos el fichero en modo lectura
                 if (fd < 0) {
                     perror("open <");
                     exit(EXIT_FAILURE);
                 }
-                dup2(fd, STDIN_FILENO);
+                dup2(fd, STDIN_FILENO); //redirigimos stdin
                 close(fd);
                 ejecutar_comando(izquierda);
                 exit(EXIT_FAILURE);
             }
                 break;
-            default: // Padre
+            default: // padre
                 PROCS_ACTIVOS++;
                 break;
         }
 
     } else if ((derecha = strstr(comando, ">>")) != NULL) {
-        // REDIRECCIÓN >> 
+
         *derecha = '\0';
         derecha += 2;
         izquierda = limpiar_linea(comando);
         derecha = limpiar_linea(derecha);
         
         pid = fork();
-        switch (pid) {
-            case -1:
+        switch (pid) {  //segun sea padre o hijo
+            case -1:       //si falla
                 perror("fork >>");
                 exit(EXIT_FAILURE);
                 break;
             case 0: { // Hijo
-                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // si falla desbloqueo de señales
                     perror("sigprocmask(SETMASK) en hijo");
                     exit(EXIT_FAILURE);
                 }
-                int fd = open(derecha, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); // Permisos más simples
+                int fd = open(derecha, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); //permisos de fichero
                 if (fd < 0) {
                     perror("open >>");
                     exit(EXIT_FAILURE);
                 }
-                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDOUT_FILENO);    //redirigimos stdout
                 close(fd);
                 ejecutar_comando(izquierda);
                 exit(EXIT_FAILURE);
             }
                 break;
-            default: // Padre
+            default: //padre
                 PROCS_ACTIVOS++;
                 break;
         }
         
     } else if ((derecha = strstr(comando, ">")) != NULL) {
-        // REDIRECCIÓN >
+        
         *derecha = '\0';
         derecha++;
         izquierda = limpiar_linea(comando);
         derecha = limpiar_linea(derecha);
 
         pid = fork();
-        switch (pid) {
-            case -1:
+        switch (pid) {  //segun sea padre o hijo
+            case -1:   //si falla
                 perror("fork >");
                 exit(EXIT_FAILURE);
                 break;
-            case 0: { // Hijo
-                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+            case 0: { // hijo
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { //si falla desbloqueo de señales
                     perror("sigprocmask(SETMASK) en hijo");
                     exit(EXIT_FAILURE);
                 }
-                int fd = open(derecha, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-                if (fd < 0) {
+                int fd = open(derecha, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);    //abrimos el fichero con los permisos
+                if (fd < 0) {   //si falla la apertura del fichero
                     perror("open >");
                     exit(EXIT_FAILURE);
                 }
-                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDOUT_FILENO);    //redirigimos stdout
                 close(fd);
                 ejecutar_comando(izquierda);
                 exit(EXIT_FAILURE);
             }
                 break;
-            default: // Padre
+            default: // padre
                 PROCS_ACTIVOS++;
                 break;
         }
     } else {
         //COMANDO SIMPLE
         pid = fork();
-        switch(pid) {
-            case -1:
+        switch(pid) {   //segun sea padre o hijo
+            case -1:    //si falla
                 perror("fork simple");
                 exit(EXIT_FAILURE);
                 break;
-            case 0: // Hijo
-                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { // Desbloquear
+            case 0: //hijo
+                if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) { //si falla desbloqueo de señales
                     perror("sigprocmask(SETMASK) en hijo");
                     exit(EXIT_FAILURE);
                 }
-                ejecutar_comando(comando);
+                ejecutar_comando(comando);  //si va el desbloqueo ejecuta el comando
                 exit(EXIT_FAILURE);
                 break;
-            default: // Padre
+            default: //padre
                 PROCS_ACTIVOS++;
                 break;
         }
     }
 
-    // 4. Desbloquea SIGCHLD en el padre para recibir señales
-    if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) {
+ 
+    if (sigprocmask(SIG_SETMASK, &old_signals, NULL) == -1) {//desbloqueamos señales en el padre
         perror("sigprocmask(SETMASK) en padre");
         exit(EXIT_FAILURE);
     }
@@ -381,11 +370,11 @@ int main(int argc, char *argv[]) {
     
 
     optind = 1;
-    while ((opt = getopt(argc, argv, "b:l:p:h")) != -1){
+    while ((opt = getopt(argc, argv, "b:l:p:h")) != -1){//mientras haya opciones que leer
         switch (opt){
         
             case 'b':
-                BUF_SIZE = atoi(optarg);
+                BUF_SIZE = atoi(optarg);    //guardamos el tamaño del buffer convirtiendolo a entero
                 if (BUF_SIZE < 1 || BUF_SIZE > 8192){
                     fprintf(stderr, "Error: El tamaño del buffer debe estar entre 1 y 8192.\n");
                     exit(EXIT_FAILURE);
@@ -393,7 +382,7 @@ int main(int argc, char *argv[]) {
 
                 break;
             case 'l':
-                MAX_LINE_SIZE = atoi(optarg);
+                MAX_LINE_SIZE = atoi(optarg);   //guardamos el tamaño maximo de linea convirtiendolo a entero
                 if (MAX_LINE_SIZE < 16 || MAX_LINE_SIZE > 1024){
                     fprintf(stderr, "Error: El numero maximo de procesos debe estar entre 16 y 1024.\n");
                     exit(EXIT_FAILURE);
@@ -401,10 +390,10 @@ int main(int argc, char *argv[]) {
                 break;
 
             case 'p':
-                    NUM_PROCS = atoi(optarg);
+                    NUM_PROCS = atoi(optarg);   //guardamos el número de procesos simultáneos convirtiendolo a entero
                     if (NUM_PROCS < 1 || NUM_PROCS > 8){
                         fprintf(stderr, "Error: El numero de procesos en ejecucion debe estar entre 1 y 8.\n");
-                        fprintf(stderr, mensaje_help, argv[0]);
+                        
 
                         exit(EXIT_FAILURE);
                     }
@@ -429,7 +418,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    char *l_buffer = malloc((MAX_LINE_SIZE + 1) * sizeof(char)); //buffer para ir almacenando la línea leída (el +1 es para el \0)
+    char *l_buffer = malloc((MAX_LINE_SIZE + 1) * sizeof(char)); //buffer para ir almacenando la linea leida (el +1 es para el \0)
     if (!l_buffer) {
         perror("Error al asignar memoria para l_buffer");
         free(b_buffer);
@@ -440,14 +429,22 @@ int main(int argc, char *argv[]) {
     
     
     ssize_t bytes_leidos;
-    ssize_t indice_bytes_lineas = 0; //índice para ir almacenando en l_buffer
+    ssize_t indice_bytes_lineas = 0; //indice para ir almacenando en l_buffer
 
     while( (bytes_leidos = read(STDIN_FILENO, b_buffer, BUF_SIZE)) > 0 ) {    //mientras que haya datos que leer se van metiendo en el buffer de lectura(b_buffer el q es de tamaño BUF_SIZE)
         //procesar buffer
         for (int i=0; i < bytes_leidos; i++){//mientras el l_buffer no esté lleno
             //almacenar en l_buffer hasta encontrar \n
+
+            if (indice_bytes_lineas == 0) {
+                //es el primer carácter de una línea nueva, la contamos AHORA.
+                LINENO++;
+            }
+
+
             if(b_buffer[i] == '\n') {//si el caracter a copiar en el l_buffer es \n
-                l_buffer[indice_bytes_lineas] = '\0'; // Terminar la cadena 
+                l_buffer[indice_bytes_lineas] = '\0'; //terminar la cadena 
+                
                 
                 if (indice_bytes_lineas > 0) { //si la línea no está vacía
                     interpretar_comando(l_buffer, LINENO); 
@@ -455,14 +452,14 @@ int main(int argc, char *argv[]) {
                 
                 //l_buffer preparado para la siguiente línea
                 indice_bytes_lineas = 0;
-                //LINENO++; // se hace dentro de la interpretacion de comando, asi cada uno (las tuberias cuentan como 1) sumaria unicamente 1
+                
 
             }else if (indice_bytes_lineas < MAX_LINE_SIZE) { //si no se ha llenado l_buffer
                 l_buffer[indice_bytes_lineas] = b_buffer[i]; //copiamos de b_buffer a l_buffer
                 indice_bytes_lineas++;
                 
-            } else {// si la línea es demasiado larga.
-                l_buffer[MAX_LINE_SIZE] = '\0'; // Asegurar fin de cadena para imprimir(necesario para el mensaje de error)
+            } else {//si la línea es demasiado larga.
+                l_buffer[MAX_LINE_SIZE] = '\0'; //asegurar fin de cadena para imprimir(necesario para el mensaje de error)
                 fprintf(stderr, "Error, línea %d demasiado larga: \"%s...\"\n", LINENO, l_buffer);
                 
                 free(l_buffer);
@@ -487,7 +484,7 @@ int main(int argc, char *argv[]) {
         interpretar_comando(l_buffer, LINENO);
     }
 
-    // espera al final a que todos los hijos terminen antes de acabar con el programa para no dejar huerfanos
+    //espera al final a que todos los hijos terminen antes de acabar con el programa para no dejar huerfanos
     sigset_t blocked_signals, old_signals;
     sigemptyset(&blocked_signals);
     sigaddset(&blocked_signals, SIGCHLD);
@@ -497,7 +494,7 @@ int main(int argc, char *argv[]) {
         sigsuspend(&old_signals);
     }
 
-    sigprocmask(SIG_SETMASK, &old_signals, NULL); // Restaurar máscara
+    sigprocmask(SIG_SETMASK, &old_signals, NULL); //restaurar máscara
 
     
     free(l_buffer);//liberar la memoria de bufe
