@@ -113,6 +113,7 @@ void ejecutar_comando(char *comando) {
 }
 
 void interpretar_comando(char *comando, int LINENO) {
+    LINENO++;
     pid_t pid;
     char *derecha = NULL;
     char *izquierda = NULL; 
@@ -218,7 +219,7 @@ void interpretar_comando(char *comando, int LINENO) {
                 }
 
                 // Nieto 2 (Derecho)
-                LINENO-=1;  //para dejar lineno correcto cuando hay una tuberia(que no se cuenten como dos lineas)
+               // LINENO-=1;  //para dejar lineno correcto cuando hay una tuberia(que no se cuenten como dos lineas)
                 pid_t right_pid = fork();
                 if (right_pid == 0) {
                     close(pipefd[1]);
@@ -454,7 +455,7 @@ int main(int argc, char *argv[]) {
                 
                 //l_buffer preparado para la siguiente línea
                 indice_bytes_lineas = 0;
-                LINENO++;
+                //LINENO++; // se hace dentro de la interpretacion de comando, asi cada uno (las tuberias cuentan como 1) sumaria unicamente 1
 
             }else if (indice_bytes_lineas < MAX_LINE_SIZE) { //si no se ha llenado l_buffer
                 l_buffer[indice_bytes_lineas] = b_buffer[i]; //copiamos de b_buffer a l_buffer
