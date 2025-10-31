@@ -1,3 +1,4 @@
+// Álvaro Pujante Cánovas G1.1 & Hugo Polo Molina G1.1
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
