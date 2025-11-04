@@ -66,6 +66,22 @@ sys_dup(void)
   return fd;
 }
 
+int sys_dup2(){
+  struct file *of,*nf;
+  int fd;
+
+  if(argfd(0, 0, &of) < 0)
+    return -1;
+  
+  if(argfd(1, 0, &nf) < 0)
+    return -1;
+    
+  if((fd=fdalloc(f)) < 0)
+    return -1;
+  filedup(f);
+  return fd;
+}
+
 int
 sys_read(void)
 {

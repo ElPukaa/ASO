@@ -23,6 +23,7 @@ extern int getpid(void);
 extern char* sbrk(int);
 extern int sleep(int);
 extern int uptime(void);
+extern int date(struct rtcdate*); //admite un parametro y hay que definirlo, es la estructura de datos
 
 // ulib.c
 extern int stat(const char*, struct stat*);
