@@ -103,7 +103,7 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
-extern int date(void); //aqui en este caso al no implementar ninguna parametros la nuestra tampoco, recupera los parametros más adelante (?
+extern int sys_date(void); //aqui en este caso al no implementar ninguna parametros la nuestra tampoco, recupera los parametros más adelante (?
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -127,6 +127,7 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_date]    sys_date,
 };
 
 void
