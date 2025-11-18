@@ -103,14 +103,14 @@ runcmd(struct cmd *cmd)
       panic("pipe");
     if(fork1() == 0){
       close(1);
-      dup(p[1]);
+      dup2(p[1]); // SI ALGO FALLA POSIBLEMENTE ES AQUI cambiar dup2 por dup 
       close(p[0]);
       close(p[1]);
       runcmd(pcmd->left);
     }
     if(fork1() == 0){
       close(0);
-      dup(p[0]);
+      dup2(p[0]); // SI ALGO FALLA POSIBLEMENTE ES AQUI cambiar dup2 por dup 
       close(p[0]);
       close(p[1]);
       runcmd(pcmd->right);

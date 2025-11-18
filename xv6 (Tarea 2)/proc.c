@@ -225,7 +225,7 @@ fork(void)
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
 void
-exit(void)
+exit(int status)
 {
   struct proc *curproc = myproc();
   struct proc *p;
@@ -246,7 +246,7 @@ exit(void)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
-
+  curproc->status = status;
   acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
@@ -273,8 +273,15 @@ exit(void)
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int
-wait(void)
+wait(int *status)
 {
+  /*
+  pueden pasar 2 cosas; status null/0  o status!= null
+  hacer algo parecido a status = p->status (no es tal cual eso pq hay que hacer que p->status se guarde en la direccion de memoria de status)
+  
+  SIGUE SIN ESTAR TOTALMENTE RESUELTO
+  */
+
   struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();

@@ -77,6 +77,9 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
+  case T_PGFLT:
+      //TO_DO (pagina 30 de las diapositivas VA MUCHA PARTE DEL CÓDIGO DE ALLOCUVM)
+
 
   //PAGEBREAK: 13
   default:

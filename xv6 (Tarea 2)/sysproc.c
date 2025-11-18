@@ -16,14 +16,23 @@ sys_fork(void)
 int
 sys_exit(void)
 {
-  exit();
+  int status;
+  if (argint(0, &status) < 0)
+    return -1; 
+
+  status = status << 8; //se hace así por convenio pq cuando lo escribe lo hace desplazado 8 bits a la derecha (lo guardamos 8 bits a la izquierda)
+  exit(status);
   return 0;  // not reached
 }
 
 int
 sys_wait(void)
 {
-  return wait();
+  int *status; 
+  if(argptr(0,(void**)&status, sizeof(int*)) < 0) //argptr(posicion,donde_guardar,tamaño_puntero)
+    return -1;
+
+  return wait(status);
 }
 
 int
@@ -51,8 +60,14 @@ sys_sbrk(void)
   if(argint(0, &n) < 0)
     return -1;
   addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+
+  if(n>0){
+    myproc()->sz += n;
+  }else{
+    if(growproc(n) < 0)
+      return -1;
+  }
+  
   return addr;
 }
 
