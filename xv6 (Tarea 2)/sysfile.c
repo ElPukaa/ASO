@@ -66,21 +66,41 @@ sys_dup(void)
   return fd;
 }
 
-int sys_dup2(){
-  struct file *of,*nf;
-  int fd;
 
-  if(argfd(0, 0, &of) < 0)
+int sys_dup2(void){
+  
+  struct file *fnew, *fold;
+  int fdold;
+  int fdnew;
+
+  if(argfd(0, &fdold, &fold ) < 0)
+    return -1;
+
+  if(argint(1, &fdnew) < 0)
     return -1;
   
-  if(argfd(1, 0, &nf) < 0)
+  if(fdnew == fdold){
+    return fdnew;
+  }
+
+  if(fdnew < 0 || fdnew >= NOFILE){
     return -1;
-    
-  if((fd=fdalloc(f)) < 0)
-    return -1;
-  filedup(f);
-  return fd;
+  }
+
+  fnew = myproc()->ofile[fdnew];
+
+  if(fnew){
+    fileclose(fnew);
+  }
+  
+  myproc()->ofile[fdnew] = fold;
+
+  filedup(fold);
+
+  return fdnew; 
 }
+
+
 
 int
 sys_read(void)
