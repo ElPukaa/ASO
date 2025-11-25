@@ -9,7 +9,16 @@
 
 struct {
   struct spinlock lock;
-  struct proc proc[NPROC];
+  struct proc proc1[NPROC];
+  struct proc proc2[NPROC];
+  struct proc proc3[NPROC];
+  struct proc proc4[NPROC];
+  struct proc proc5[NPROC];
+  struct proc proc6[NPROC];
+  struct proc proc7[NPROC];
+  struct proc proc8[NPROC];
+  struct proc proc9[NPROC];
+  
 } ptable;
 
 static struct proc *initproc;
