@@ -231,11 +231,10 @@ exit(int status)
   struct proc *p;
   int fd;
 
-  if(curproc->exit_code == 0)
-    curproc->exit_code = (status & 0xff) << 8;
-
   if(curproc == initproc)
     panic("init exiting");
+  
+  curproc->exit_code = status;
 
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
@@ -293,8 +292,12 @@ wait(int *status)
       if(p->state == ZOMBIE){
         // Found one.
         if(status != 0){
-          *status = p->exit_code;
-	}
+          if(p->killed){
+            *status = p->exit_code; 
+          } else {
+            *status = p->exit_code << 8; 
+          }
+        }
         pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;

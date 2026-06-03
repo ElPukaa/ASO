@@ -16,6 +16,7 @@ UPROGS=\
 	zombie\
 	date\
 	test_dup2\
+	test_wait\
 
 # Try to infer the correct TOOLPREFIX if not set
 ifndef TOOLPREFIX
