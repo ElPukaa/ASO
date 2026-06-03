@@ -82,23 +82,23 @@ trap(struct trapframe *tf)
   //PAGEBREAK: 13
   default:
     if (tf->trapno == 14) {
-      
-      uint va = rcr2();
-      
-      if (va < myproc()->sz && va >= tf->esp) {
-        char *mem;
-        uint a = PGROUNDDOWN(va);
+      if ((tf->err & 1) == 0) {
+        uint va = rcr2();
         
-        mem = kalloc();
-        if (mem != 0) {
-          memset(mem, 0, PGSIZE);
-          if (mappages(myproc()->pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W | PTE_U) >= 0){ 
-            break; 
+        if (va < myproc()->sz && va >= tf->esp) {
+          char *mem;
+          uint a = PGROUNDDOWN(va);
+          
+          mem = kalloc();
+          if (mem != 0) {
+            memset(mem, 0, PGSIZE);
+            if (mappages(myproc()->pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W | PTE_U) >= 0){ 
+              break; 
+            }
+            kfree(mem);
           }
-          kfree(mem);
         }
       }
-      
     }
 
     if(myproc() == 0 || (tf->cs&3) == 0){
