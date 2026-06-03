@@ -7,6 +7,7 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
+extern int mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
@@ -80,6 +81,26 @@ trap(struct trapframe *tf)
 
   //PAGEBREAK: 13
   default:
+    if (tf->trapno == 14) {
+      
+      uint va = rcr2();
+      
+      if (va < myproc()->sz && va >= tf->esp) {
+        char *mem;
+        uint a = PGROUNDDOWN(va);
+        
+        mem = kalloc();
+        if (mem != 0) {
+          memset(mem, 0, PGSIZE);
+          if (mappages(myproc()->pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W | PTE_U) >= 0){ 
+            break; 
+          }
+          kfree(mem);
+        }
+      }
+      
+    }
+
     if(myproc() == 0 || (tf->cs&3) == 0){
       // In kernel, it must be our mistake.
       cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
