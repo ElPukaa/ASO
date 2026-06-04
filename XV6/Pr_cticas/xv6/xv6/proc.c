@@ -55,6 +55,85 @@ extraer_cola(int prio)
   return p;
 }
 
+void
+eliminar_de_cola(struct proc *p)
+{
+  int prio = p->priority;
+  struct proc *act = ptable.primero[prio];
+  struct proc *ant = 0;
+
+  while(act != 0) {
+    if(act == p) {
+
+      if(ant == 0){
+        ptable.primero[prio] = act->siguiente;
+      } else{
+          ant->siguiente = act->siguiente;
+      } 
+      
+      if(ptable.ultimo[prio] == p){
+        ptable.ultimo[prio] = ant;
+      } 
+
+      p->siguiente = 0;
+      break;
+    }
+    ant = act;
+    act = act->siguiente;
+  }
+}
+
+int
+getprio(int pid)
+{
+  struct proc *p;
+  int prio = -1;
+
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid && p->state != UNUSED){
+      prio = p->priority;
+      break;
+    }
+  }
+  release(&ptable.lock);
+  return prio;
+}
+
+
+int
+setprio(int pid, int prio)
+{
+  if(prio < 0 || prio > 9){
+    return -1;
+  }
+
+  struct proc *p;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid && p->state != UNUSED){
+      
+      //estados del proceso y que hacer en cada uno
+
+      //está ya en una cola, se elimina de donde este y se vuelve a insertar con la nueva prioridad
+      if(p->state == RUNNABLE) {
+        eliminar_de_cola(p);
+        p->priority = prio;
+        insertar_cola(p);
+      } else { //si está en sleep o ejecutandose (no runnable) se le cambia y ya porq no está en ninguna cola
+        p->priority = prio;
+      }
+      
+      release(&ptable.lock);
+      return 0; 
+    }
+  }
+  release(&ptable.lock);
+  return -1; //no se encuentra el PID
+}
+
+
+
 static struct proc *initproc;
 
 int nextpid = 1;

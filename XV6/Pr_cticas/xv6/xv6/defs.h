@@ -120,6 +120,9 @@ void            userinit(void);
 int             wait(int*);
 void            wakeup(void*);
 void            yield(void);
+//boletin4 ejercicio2
+int getprio(int);
+int setprio(int, int);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
