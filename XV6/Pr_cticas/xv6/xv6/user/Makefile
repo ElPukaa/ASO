@@ -16,7 +16,7 @@ UPROGS=\
 	zombie\
 	date\
 	dup2test\
-	test_wait\
+	exitwait\
 	tprio\
 
 # Try to infer the correct TOOLPREFIX if not set
