@@ -15,7 +15,7 @@ UPROGS=\
 	wc\
 	zombie\
 	date\
-	test_dup2\
+	dup2test\
 	test_wait\
 	tprio\
 
