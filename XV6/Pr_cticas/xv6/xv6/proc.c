@@ -10,7 +10,129 @@
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
+  //boletin4  
+  struct proc *primero[10];
+  struct proc *ultimo[10];
 } ptable;
+
+//ejercicio 1.3 boletin 4
+void
+insertar_cola(struct proc *p)
+{
+  int prio = p->priority;
+  
+  p->siguiente = 0;
+
+  //cola vacia
+  if(ptable.primero[prio] == 0){
+    ptable.primero[prio] = p;
+    ptable.ultimo[prio] = p;
+  } else {//si no está vacia
+    ptable.ultimo[prio]->siguiente = p; //Ultimo ahora apunta a p
+    ptable.ultimo[prio] = p;            //p pasa a ser ultimo
+  }
+} 
+
+//saca de la cola segun la prioridad (que maneja scheduler)
+struct proc*
+extraer_cola(int prio)
+{
+  if(ptable.primero[prio] == 0){
+    return 0;
+  }
+
+  struct proc *p = ptable.primero[prio];
+  
+  
+  ptable.primero[prio] = p->siguiente; //segundo pasa a ser el primero
+  
+  if(ptable.primero[prio] == 0){
+    ptable.ultimo[prio] = 0;
+  }
+
+  p->siguiente = 0;
+  
+  return p;
+}
+
+void
+eliminar_de_cola(struct proc *p)
+{
+  int prio = p->priority;
+  struct proc *act = ptable.primero[prio];
+  struct proc *ant = 0;
+
+  while(act != 0) {
+    if(act == p) {
+
+      if(ant == 0){
+        ptable.primero[prio] = act->siguiente;
+      } else{
+          ant->siguiente = act->siguiente;
+      } 
+      
+      if(ptable.ultimo[prio] == p){
+        ptable.ultimo[prio] = ant;
+      } 
+
+      p->siguiente = 0;
+      break;
+    }
+    ant = act;
+    act = act->siguiente;
+  }
+}
+
+int
+getprio(int pid)
+{
+  struct proc *p;
+  int prio = -1;
+
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid && p->state != UNUSED){
+      prio = p->priority;
+      break;
+    }
+  }
+  release(&ptable.lock);
+  return prio;
+}
+
+
+int
+setprio(int pid, int prio)
+{
+  if(prio < 0 || prio > 9){
+    return -1;
+  }
+
+  struct proc *p;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid && p->state != UNUSED){
+      
+      //estados del proceso y que hacer en cada uno
+
+      //está ya en una cola, se elimina de donde este y se vuelve a insertar con la nueva prioridad
+      if(p->state == RUNNABLE) {
+        eliminar_de_cola(p);
+        p->priority = prio;
+        insertar_cola(p);
+      } else { //si está en sleep o ejecutandose (no runnable) se le cambia y ya porq no está en ninguna cola
+        p->priority = prio;
+      }
+      
+      release(&ptable.lock);
+      return 0; 
+    }
+  }
+  release(&ptable.lock);
+  return -1; //no se encuentra el PID
+}
+
+
 
 static struct proc *initproc;
 
@@ -89,6 +211,10 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
 
+  //prioridad default
+  p->priority = 5;
+  p->siguiente = 0;
+
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -149,6 +275,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+  insertar_cola(p);
 
   release(&ptable.lock);
 }
@@ -189,6 +316,9 @@ fork(void)
     return -1;
   }
 
+  //hereda la prioridad
+  np->priority = curproc->priority;
+
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
@@ -215,6 +345,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
+  insertar_cola(np);
 
   release(&ptable.lock);
 
@@ -344,23 +475,32 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+    //Ejercicio 1.4 boletin 4
+    int prio; 
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+    //for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    for(prio = 0; prio < 10; prio++){ //se recorre por colas de prioridad en lugar de toda la tabla de procesos
+      
+      p = extraer_cola(prio);
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+      if (p != 0) { //si existe el proceso
+        if (p->state == RUNNABLE){ //se puede correr
+          c->proc = p;
+          switchuvm(p);
+          p->state = RUNNING;
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+          swtch(&(c->scheduler), p->context);
+          switchkvm();
+
+          c->proc = 0;
+        }
+
+        if (p->state == RUNNABLE) {
+          insertar_cola(p);
+        }
+
+        break; //para volver a buscar por la prioridad 0 en caso de que haya despertado otro proceso //TODO:revisar si esto es lo que queremos
+      }
     }
     release(&ptable.lock);
 
@@ -399,6 +539,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
+  //aqui no hace falta insertar en cola porque ya se gestiona en scheduler
   sched();
   release(&ptable.lock);
 }
@@ -472,8 +613,10 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
+      insertar_cola(p);
+    }
 }
 
 // Wake up all processes sleeping on chan.
@@ -498,8 +641,10 @@ kill(int pid)
     if(p->pid == pid){
       p->killed = 1;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING)
+      if(p->state == SLEEPING){
         p->state = RUNNABLE;
+        insertar_cola(p);
+      }
       release(&ptable.lock);
       return 0;
     }
