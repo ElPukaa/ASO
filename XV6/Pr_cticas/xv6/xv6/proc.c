@@ -365,38 +365,39 @@ exit(int status)
   if(curproc == initproc)
     panic("init exiting");
   
-  curproc->exit_code = status;
-
-  // Close all open files.
-  for(fd = 0; fd < NOFILE; fd++){
-    if(curproc->ofile[fd]){
-      fileclose(curproc->ofile[fd]);
-      curproc->ofile[fd] = 0;
+    
+    // Close all open files.
+    for(fd = 0; fd < NOFILE; fd++){
+      if(curproc->ofile[fd]){
+        fileclose(curproc->ofile[fd]);
+        curproc->ofile[fd] = 0;
+      }
     }
-  }
-
-  begin_op();
-  iput(curproc->cwd);
+    
+    begin_op();
+    iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
-
+  
   acquire(&ptable.lock);
-
+  
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
-
+  
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
       p->parent = initproc;
       if(p->state == ZOMBIE)
-        wakeup1(initproc);
+      wakeup1(initproc);
     }
   }
-
+  
   // Optimize by removing user part
   deallocuvm(curproc->pgdir, KERNBASE, 0);
-
+  
+  curproc->exit_code = status;
+  
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
   sched();

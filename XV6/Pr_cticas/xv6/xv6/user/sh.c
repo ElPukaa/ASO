@@ -172,8 +172,10 @@ main(void)
 
     if(WIFEXITED(status)){
       printf(1, "Output code: %d\n", WEXITSTATUS(status));
+    }else if(WIFSIGNALED(status)){
+      printf(1, "Terminated by signal: %d\n", WEXITTRAP(status));
     }else{
-      printf(1, "Output code: %d\n", WEXITTRAP(status));
+      printf(1, "Unknown status: %d\n", status);
     }
   }
   exit(0);
