@@ -33,7 +33,7 @@ struct context {
 };
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
-
+#define PRIO_DEFAULT 5 
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)

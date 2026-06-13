@@ -212,7 +212,7 @@ found:
   p->pid = nextpid++;
 
   //prioridad default
-  p->priority = 5;
+  p->priority = PRIO_DEFAULT;
   p->siguiente = 0;
 
   release(&ptable.lock);
@@ -366,16 +366,16 @@ exit(int status)
     panic("init exiting");
   
     
-    // Close all open files.
-    for(fd = 0; fd < NOFILE; fd++){
-      if(curproc->ofile[fd]){
-        fileclose(curproc->ofile[fd]);
-        curproc->ofile[fd] = 0;
-      }
+  // Close all open files.
+  for(fd = 0; fd < NOFILE; fd++){
+    if(curproc->ofile[fd]){
+      fileclose(curproc->ofile[fd]);
+      curproc->ofile[fd] = 0;
     }
-    
-    begin_op();
-    iput(curproc->cwd);
+  }
+  
+  begin_op();
+  iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
   
