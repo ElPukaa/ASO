@@ -116,6 +116,8 @@ setprio(int pid, int prio)
       //estados del proceso y que hacer en cada uno
 
       //está ya en una cola, se elimina de donde este y se vuelve a insertar con la nueva prioridad
+      int prio_ant = p->priority; 
+
       if(p->state == RUNNABLE) {
         eliminar_de_cola(p);
         p->priority = prio;
@@ -124,6 +126,12 @@ setprio(int pid, int prio)
         p->priority = prio;
       }
       
+      if(p->state == RUNNING && prio > prio_ant && p == myproc()){
+        release(&ptable.lock);
+        yield();
+        return 0;
+      }
+
       release(&ptable.lock);
       return 0; 
     }
@@ -476,8 +484,7 @@ scheduler(void)
     //Ejercicio 1.4 boletin 4
     int prio; 
 
-    //for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    for(prio = 0; prio < 10; prio++){ //se recorre por colas de prioridad en lugar de toda la tabla de procesos
+    for(prio = MAX_PRIORITY ; prio <= MIN_PRIORITY; prio++){ //se recorre por colas de prioridad en lugar de toda la tabla de procesos
       
       p = extraer_cola(prio);
 
@@ -491,9 +498,9 @@ scheduler(void)
           switchkvm();
 
           c->proc = 0;
+          break; //para volver a buscar por la prioridad 0 en caso de que haya despertado otro proceso
         }
 
-        break; //para volver a buscar por la prioridad 0 en caso de que haya despertado otro proceso //TODO:revisar si esto es lo que queremos
       }
     }
     release(&ptable.lock);
@@ -584,7 +591,6 @@ sleep(void *chan, struct spinlock *lk)
   }
   // Go to sleep.
   p->chan = chan;
-  eliminar_de_cola(p);
   p->state = SLEEPING;
 
   sched();
