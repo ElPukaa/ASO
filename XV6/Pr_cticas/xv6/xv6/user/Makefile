@@ -18,6 +18,11 @@ UPROGS=\
 	dup2test\
 	exitwait\
 	tprio\
+	tsbrk1\
+	tsbrk2\
+	tsbrk3\
+	tsbrk4\
+	tsbrk5\
 
 # Try to infer the correct TOOLPREFIX if not set
 ifndef TOOLPREFIX
