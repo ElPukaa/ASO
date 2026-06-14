@@ -318,6 +318,7 @@ fork(void)
 
   //hereda la prioridad
   np->priority = curproc->priority;
+  np->siguiente = 0;
 
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
@@ -424,11 +425,7 @@ wait(int *status)
       if(p->state == ZOMBIE){
         // Found one.
         if(status != 0){
-          if(p->killed){
             *status = p->exit_code; 
-          } else {
-            *status = p->exit_code << 8; 
-          }
         }
         pid = p->pid;
         kfree(p->kstack);
@@ -496,10 +493,6 @@ scheduler(void)
           c->proc = 0;
         }
 
-        if (p->state == RUNNABLE) {
-          insertar_cola(p);
-        }
-
         break; //para volver a buscar por la prioridad 0 en caso de que haya despertado otro proceso //TODO:revisar si esto es lo que queremos
       }
     }
@@ -540,7 +533,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
-  //aqui no hace falta insertar en cola porque ya se gestiona en scheduler
+  insertar_cola(myproc());
   sched();
   release(&ptable.lock);
 }
@@ -591,6 +584,7 @@ sleep(void *chan, struct spinlock *lk)
   }
   // Go to sleep.
   p->chan = chan;
+  eliminar_de_cola(p);
   p->state = SLEEPING;
 
   sched();
