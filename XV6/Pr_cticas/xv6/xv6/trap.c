@@ -79,28 +79,41 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
 
-  //PAGEBREAK: 13
-  default:
-    if (tf->trapno == 14) {
-      if ((tf->err & 1) == 0) {
-        uint va = rcr2();
-        
-        if (va < myproc()->sz && va >= tf->esp) {
-          char *mem;
-          uint a = PGROUNDDOWN(va);
-          
-          mem = kalloc();
-          if (mem != 0) {
-            memset(mem, 0, PGSIZE);
-            if (mappages(myproc()->pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W | PTE_U) >= 0){ 
-              break; 
-            }
-            kfree(mem);
-          }
-        }
-      }
+   case T_PGFLT: 
+    uint va = rcr2();
+    char *mem;
+    
+    if(tf->err & PTE_P){
+      cprintf("Fallo de permisos en la direccion virtual 0x%x\n", va);
+      myproc()->killed = 1;
+      break;
     }
 
+    if(va >= myproc()->sz){
+      myproc()->killed = 1;
+      break;
+    }
+
+    mem = kalloc();
+    if(mem == 0){
+      cprintf("Memoria fisica agotada para el PID %d (direccion 0x%x) \n", myproc()->pid, va);
+      myproc()->killed = 1;
+      break;
+    }
+
+    memset(mem, 0, PGSIZE);
+    if(mappages(myproc()->pgdir, (char*)PGROUNDDOWN(va), PGSIZE, V2P(mem), PTE_W | PTE_U) < 0){
+      cprintf("Fallo al mapear la pagina en 0x%x\n", va);
+      myproc()->killed = 1;
+      kfree(mem);
+      break;
+    }
+    break;
+
+  
+  //PAGEBREAK: 13
+  default:
+  
     if(myproc() == 0 || (tf->cs&3) == 0){
       // In kernel, it must be our mistake.
       cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
@@ -119,7 +132,7 @@ trap(struct trapframe *tf)
   // (If it is still executing in the kernel, let it keep running
   // until it gets to the regular system call return.)
   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
-    exit(tf->trapno + 1);
+    exit(-1);
 
   // Force process to give up CPU on clock tick.
   // If interrupts were on while locks held, would need to check nlock.
