@@ -17,22 +17,19 @@ int
 sys_exit(void)
 {
   int status;
-
-  if(argint(0, &status) < 0)
+  if(argint(0, &status) < 0){
     return -1;
-
+  }
   exit(status);
-  return 0;  // not reached
+  return 0;
 }
 
 int
 sys_wait(void)
 {
   int *status;
-
   if(argptr(0,(void**)&status, sizeof(int)) < 0)
     return -1;
-
   return wait(status);
 }
 
@@ -52,6 +49,7 @@ sys_getpid(void)
   return myproc()->pid;
 }
 
+
 int
 sys_sbrk(void)
 {
@@ -60,14 +58,14 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
+
   addr = myproc()->sz;
 
   if(n>0){
     //asignación perezosa
     myproc()->sz += n; 
-  } else if (n<0){
-    //libera memoria tal cual
-    myproc()->sz = deallocuvm(myproc()->pgdir, addr, addr + n);
+  } else if (growproc(n)<0){
+    return -1;
   }
 
   return addr;
