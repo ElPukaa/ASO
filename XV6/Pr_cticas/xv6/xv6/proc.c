@@ -42,8 +42,7 @@ extraer_cola(int prio)
   }
 
   struct proc *p = ptable.primero[prio];
-  
-  
+
   ptable.primero[prio] = p->siguiente; //segundo pasa a ser el primero
   
   if(ptable.primero[prio] == 0){
@@ -68,7 +67,7 @@ eliminar_de_cola(struct proc *p)
       if(ant == 0){
         ptable.primero[prio] = act->siguiente;
       } else{
-          ant->siguiente = act->siguiente;
+        ant->siguiente = act->siguiente;
       } 
       
       if(ptable.ultimo[prio] == p){
@@ -220,7 +219,7 @@ found:
   p->pid = nextpid++;
 
   //prioridad default
-  p->priority = PRIO_DEFAULT;
+  p->priority = DEFAULT_PRIORITY;
   p->siguiente = 0;
 
   release(&ptable.lock);
@@ -478,7 +477,6 @@ scheduler(void)
   for(;;){
     // Enable interrupts on this processor.
     sti();
-
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     //Ejercicio 1.4 boletin 4
@@ -504,7 +502,6 @@ scheduler(void)
       }
     }
     release(&ptable.lock);
-
   }
 }
 
