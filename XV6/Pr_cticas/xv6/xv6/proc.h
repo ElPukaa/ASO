@@ -55,6 +55,10 @@ struct proc {
 
 };
 
+#define MAX_PRIORITY 0
+#define MIN_PRIORITY 9
+#define DEFAULT_PRIORITY 5
+
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss
